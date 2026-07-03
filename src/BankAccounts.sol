@@ -17,6 +17,7 @@ contract BankAccounts is Ownable {
     error BankAccounts__NotAJointAccount();
     error BankAccounts__NoPendingRequest();
     error BankAccounts__CannotApproveOwnRequest();
+    error BankAccounts__InvalidOwnersToRegisterMustBeMsgSender();
 
     //////////////// Enum and Structs ////////////////
 
@@ -44,11 +45,11 @@ contract BankAccounts is Ownable {
     //////////////// Constants ////////////////
 
     // The larger the denominator, the slower the tokens mint. 
-    uint256 public constant YIELD_RATE_DENOMINATOR = 100000;
+    uint256 private constant YIELD_RATE_DENOMINATOR = 100000;
 
     //////////////// State Variables ////////////////
 
-    IYieldToken public s_yieldToken;
+    IYieldToken private s_yieldToken;
     uint256 private s_nextAccountId = 1;
 
     // Mapping from Account ID -> Account Data
@@ -87,7 +88,7 @@ contract BankAccounts is Ownable {
     function createAccount(AccountType _type, address[] calldata _owners) external {
         if (_type == AccountType.Individual) {
             if (_owners.length != 1) revert BankAccounts__InvalidOwnersCount();
-            if (_owners[0] != msg.sender) revert BankAccounts__InvalidOwnersCount(); // Creator must be the owner
+            if (_owners[0] != msg.sender) revert BankAccounts__InvalidOwnersToRegisterMustBeMsgSender(); // Creator must be the owner
         } else if (_type == AccountType.Joint) {
             if (_owners.length != 2) revert BankAccounts__InvalidOwnersCount();
             if (_owners[0] == _owners[1]) revert BankAccounts__OwnersCannotBeIdentical();
@@ -126,7 +127,7 @@ contract BankAccounts is Ownable {
         
         Account storage account = s_accounts[_accountId];
         if (account.id == 0) revert BankAccounts__AccountDoesNotExist();
-        if (!account.isActive) revert BankAccounts__AccountInactive();
+        //if (!account.isActive) revert BankAccounts__AccountInactive(); // I cannot get to this error maybe owner can make an account inactive or a user
 
         _processYield(_accountId);
         account.balance += msg.value;
@@ -142,7 +143,7 @@ contract BankAccounts is Ownable {
         Account storage account = s_accounts[_accountId];
         
         if (account.id == 0) revert BankAccounts__AccountDoesNotExist();
-        if (!account.isActive) revert BankAccounts__AccountInactive();
+        // if (!account.isActive) revert BankAccounts__AccountInactive();
         if (account.balance < _amount) revert BankAccounts__InsufficientFunds();
 
         // Verify that the sender is one of the owners

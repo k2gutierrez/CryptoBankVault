@@ -4,16 +4,19 @@ pragma solidity ^0.8.13;
 import {Test, console2} from "../lib/forge-std/src/Test.sol";
 import {BankAccounts} from "../src/BankAccounts.sol";
 import {BankScript} from "../script/BankScript.s.sol";
+import {YieldToken} from "../src/YieldToken.sol";
 
 contract BankAccountsTest is Test {
 
     ///////// Constants for testing /////////
 
     uint256 public constant AMOUNT_FOR_USER = 10 ether;
+    uint256 public constant YIELD_RATE_DENOMINATOR = 100000;
 
     ///////// Users /////////
     address user1 = makeAddr("USER1");
     address user2 = makeAddr("USER2");
+    address user3 = makeAddr("USER3");
 
     ///////// contract for testing /////////
 
@@ -24,6 +27,29 @@ contract BankAccountsTest is Test {
         bankAccounts = deployer.run();
         vm.deal(user1, AMOUNT_FOR_USER);
         vm.deal(user2, AMOUNT_FOR_USER);
+    }
+
+    ////////Only Owner function ////////
+
+    function testSetYieldTokenRevertsNotOwner() external {
+        address newYieldTokenAddress = makeAddr("YIELD");
+
+        vm.expectRevert();
+        vm.prank(user1);
+        bankAccounts.setYieldToken(newYieldTokenAddress);
+    }
+
+    function testSetYieldTokenAsOwner() external {
+        address lastYieldTokenAddress = bankAccounts.getYeildTokenAddress();
+        address newYieldTokenAddress = makeAddr("YIELD");
+
+        vm.prank(bankAccounts.owner());
+        bankAccounts.setYieldToken(newYieldTokenAddress);
+
+        address changedYieldTokenAddress = bankAccounts.getYeildTokenAddress();
+
+        assertNotEq(lastYieldTokenAddress, changedYieldTokenAddress);
+        assertEq(newYieldTokenAddress, changedYieldTokenAddress);
     }
 
     //////// Normal functions to use in tests ////////
@@ -55,6 +81,220 @@ contract BankAccountsTest is Test {
         vm.stopPrank();
 
         return jointId;
+    }
+
+    //////// create Account function ////////
+
+    function testSingleAccountRevertsInvalidOwnersCount() external {
+         address[] memory user = new address[](2);
+        user[0] = user2;
+        user[1] = user3;
+
+        vm.expectRevert(BankAccounts.BankAccounts__InvalidOwnersCount.selector);
+        vm.prank(user2);
+        bankAccounts.createAccount(BankAccounts.AccountType.Individual, user);
+        
+    }
+
+    function testSingleAccountRevertsInvalidOwnersCountMustBeOwnerTheMsgSender() external {
+         address[] memory user = new address[](1);
+        user[0] = user2;
+
+        vm.expectRevert(BankAccounts.BankAccounts__InvalidOwnersToRegisterMustBeMsgSender.selector);
+        vm.prank(user1);
+        bankAccounts.createAccount(BankAccounts.AccountType.Individual, user);
+        
+    }
+
+    function testJointAccountRevertsInvalidOwnersCount() external {
+        address[] memory user = new address[](1);
+        user[0] = user2;
+
+        vm.expectRevert(BankAccounts.BankAccounts__InvalidOwnersCount.selector);
+        vm.prank(user2);
+        bankAccounts.createAccount(BankAccounts.AccountType.Joint, user);
+        
+    }
+
+    function testJointAccountRevertsAddressInJointCannotBeTheSame() external {
+         address[] memory user = new address[](2);
+        user[0] = user2;
+        user[1] = user2;
+
+        vm.expectRevert(BankAccounts.BankAccounts__OwnersCannotBeIdentical.selector);
+        vm.prank(user2);
+        bankAccounts.createAccount(BankAccounts.AccountType.Joint, user);
+        
+    }
+
+    function testJointAccountRevertsMsgSenderIsNotOwnerOfAccount() external {
+         address[] memory user = new address[](2);
+        user[0] = user2;
+        user[1] = user3;
+
+        vm.expectRevert("Must be an owner");
+        vm.prank(user1);
+        bankAccounts.createAccount(BankAccounts.AccountType.Joint, user);
+        
+    }
+
+    //////// Deposit function ////////
+
+    function testDepositRevertsMsgValueIs0() external {
+        uint256 amount = 0;
+
+        address[] memory user = new address[](1);
+        user[0] = user1;
+        vm.startPrank(user1);
+        bankAccounts.createAccount(BankAccounts.AccountType.Individual, user);
+
+        uint256[] memory account = bankAccounts.getUserAccounts(user1);
+        vm.expectRevert(BankAccounts.BankAccounts__ZeroDeposit.selector);
+        bankAccounts.deposit{value: amount}(account[0]);
+        vm.stopPrank();
+    }
+
+    function testDepositRevertsAccountIDis0() external {
+        uint256 amount = 1e10;
+
+        vm.startPrank(user1);
+        vm.expectRevert(BankAccounts.BankAccounts__AccountDoesNotExist.selector);
+        bankAccounts.deposit{value: amount}(0);
+        vm.stopPrank();
+    }
+
+    function testDepositRevertsAccountIsnotCreated() external {
+        uint256 amount = 1e10;
+
+        vm.startPrank(user1);
+        vm.expectRevert(BankAccounts.BankAccounts__AccountDoesNotExist.selector);
+        bankAccounts.deposit{value: amount}(1);
+        vm.stopPrank();
+    }
+
+    //////// Request Withdrawal function ////////
+
+    function testWithdrawalRequestRevertsAccountDoesNotExists() external {
+        uint256 amount = 1e18;
+        uint256 id = 1;
+
+        vm.startPrank(user1);
+        vm.expectRevert(BankAccounts.BankAccounts__AccountDoesNotExist.selector);
+        bankAccounts.requestWithdrawal(id, amount);
+        vm.stopPrank();
+    }
+
+    function testWithdrawalRequestRevertsAccountInsufficientBalance() external {
+        uint256 amount = 1e18;
+        uint256 amountToWithdraw = 2e18;
+        uint256 id = 1;
+
+        _createSingleAccountAndDeposit(user1, amount);
+
+        vm.startPrank(user1);
+        vm.expectRevert(BankAccounts.BankAccounts__InsufficientFunds.selector);
+        bankAccounts.requestWithdrawal(id, amountToWithdraw);
+        vm.stopPrank();
+    }
+
+    function testWithdrawalRequestRevertsAccountNotAnOwner() external {
+        uint256 amount = 1e18;
+        uint256 amountToWithdraw = 1e9;
+        uint256 id = 1;
+
+        _createJointAccountAndDeposit(user1, user2, amount);
+
+        vm.startPrank(user3);
+        vm.expectRevert(BankAccounts.BankAccounts__NotAnOwner.selector);
+        bankAccounts.requestWithdrawal(id, amountToWithdraw);
+        vm.stopPrank();
+    }
+
+    //////// approveWithdrawal function ////////
+
+    function testApproveWithdrawalRevertsAccountDoentExists() external {
+        vm.expectRevert(BankAccounts.BankAccounts__AccountDoesNotExist.selector);
+        vm.prank(user1);
+        bankAccounts.approveWithdrawal(1);
+    }
+
+    function testApproveWithdrawalRevertsNotAJointAccount() external {
+        uint256 amount = 1e18;
+        _createSingleAccountAndDeposit(user1, amount);
+
+        vm.expectRevert(BankAccounts.BankAccounts__NotAJointAccount.selector);
+        vm.prank(user1);
+        bankAccounts.approveWithdrawal(1);
+    }
+
+    function testApproveWithdrawalRevertsRequestAmountIsZero() external {
+        uint256 amount = 1e18;
+        _createJointAccountAndDeposit(user1, user2, amount);
+
+        vm.expectRevert(BankAccounts.BankAccounts__NoPendingRequest.selector);
+        vm.prank(user1);
+        bankAccounts.approveWithdrawal(1);
+    }
+
+    function testApproveWithdrawalRevertsNotOwnerCalling() external {
+        uint256 amount = 1e18;
+        uint256 accountId = 1;
+        _createJointAccountAndDeposit(user1, user2, amount);
+
+        vm.startPrank(user1);
+        bankAccounts.requestWithdrawal(accountId, (amount / 2));
+
+        vm.stopPrank();
+
+
+        vm.startPrank(user3);
+        vm.expectRevert(BankAccounts.BankAccounts__NotAnOwner.selector);
+        
+        bankAccounts.approveWithdrawal(1);
+
+        vm.stopPrank();
+    }
+
+    function testApproveWithdrawalRevertsCannotApproveSameAddress() external {
+        uint256 amount = 1e18;
+        uint256 accountId = 1;
+        _createJointAccountAndDeposit(user1, user2, amount);
+
+        vm.startPrank(user1);
+        bankAccounts.requestWithdrawal(accountId, (amount / 2));
+
+        vm.stopPrank();
+
+
+        vm.startPrank(user1);
+        vm.expectRevert(BankAccounts.BankAccounts__CannotApproveOwnRequest.selector);
+        
+        bankAccounts.approveWithdrawal(1);
+
+        vm.stopPrank();
+    }
+
+    //////// Yield token function ////////
+
+    function testGettingYieldToken() external {
+        YieldToken token = YieldToken(bankAccounts.getYeildTokenAddress());
+        uint256 accountId = 1;
+        uint256 amount = 2 ether;
+        uint256 timeElapsed = block.timestamp + 30 days;
+
+        uint256 userTokensBefore = token.balanceOf(user1);
+
+        _createSingleAccountAndDeposit(user1, amount);
+        vm.warp(timeElapsed);
+
+        vm.prank(user1);
+        bankAccounts.requestWithdrawal(accountId, (amount/2));
+
+        uint256 userTokensAfter = token.balanceOf(user1);
+
+        assertNotEq(userTokensBefore, userTokensAfter);
+        assert(userTokensAfter != 0);
+
     }
 
     //////// Getter functions ////////
