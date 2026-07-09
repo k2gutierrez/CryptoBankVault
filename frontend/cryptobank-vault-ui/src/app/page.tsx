@@ -8,13 +8,14 @@ import { CreateAccount } from '../components/CreateAccount';
 import { AccountDetails } from '../components/AccountDetails';
 import { YieldPortfolio } from '../components/YieldPortfolio';
 import { selectedAccountIdAtom } from '../../store';
+import { VaultListItem } from '../components/VaultListItem';
 
 export default function Home() {
   const { address, isConnected } = useAccount();
   
   const [selectedAccountId, setSelectedAccountId] = useAtom(selectedAccountIdAtom);
 
-  const { data: userAccounts, isLoading, isError } = useReadContract({
+  const { data: userAccounts, isLoading, isError, refetch } = useReadContract({
     address: BANK_CONTRACT_ADDRESS,
     abi: BANK_ABI,
     functionName: 'getUserAccounts',
@@ -63,28 +64,17 @@ export default function Home() {
 
                 {userAccounts && userAccounts.length > 0 && (
                   <ul className="flex flex-col gap-2">
-                    {userAccounts.map((accountId) => {
-                      const isSelected = selectedAccountId === accountId;
-                      return (
-                        <li key={accountId.toString()}>
-                          <button
-                            onClick={() => setSelectedAccountId(accountId)}
-                            className={`w-full text-left p-3 rounded-lg font-medium transition duration-200 ${
-                              isSelected 
-                                ? 'bg-blue-600 text-white shadow-md' 
-                                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                            }`}
-                          >
-                            Vault #{accountId.toString()}
-                          </button>
-                        </li>
-                      );
-                    })}
+                    {userAccounts.map((accountId) => (
+                      <VaultListItem 
+                        key={accountId.toString()} 
+                        accountId={accountId} 
+                      />
+                    ))}
                   </ul>
                 )}
               </div>
 
-              <CreateAccount />
+              <CreateAccount onAccountCreated={() => refetch()} />
             </div>
 
             {/* RIGHT COLUMN: Vault Details & Actions */}

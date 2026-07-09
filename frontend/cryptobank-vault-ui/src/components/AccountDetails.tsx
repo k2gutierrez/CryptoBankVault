@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAtomValue } from 'jotai';
-import { useReadContract, useWriteContract, useAccount } from 'wagmi';
+import { useReadContract, useWriteContract, useAccount, useWaitForTransactionReceipt } from 'wagmi';
 import { formatEther, parseEther } from 'viem';
 import { motion, AnimatePresence } from 'framer-motion';
 import { selectedAccountIdAtom } from '../../store';
@@ -14,10 +14,10 @@ export function AccountDetails() {
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
 
-  const { writeContract } = useWriteContract();
+  const { writeContract, data: hash } = useWriteContract();
 
   // Fetch Account Data
-  const { data: account, isLoading: isLoadingAccount } = useReadContract({
+  const { data: account, isLoading: isLoadingAccount, refetch: refetchAccount } = useReadContract({
     address: BANK_CONTRACT_ADDRESS,
     abi: BANK_ABI,
     functionName: 'getAccount',
@@ -33,6 +33,16 @@ export function AccountDetails() {
     args: selectedAccountId ? [selectedAccountId] : undefined,
     query: { enabled: !!selectedAccountId }
   });
+
+  const { isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: hash,
+  });
+
+  useEffect(() => {
+    if (isConfirmed) {
+      refetchAccount();
+    }
+  }, [isConfirmed, refetchAccount]);
 
   if (!selectedAccountId) {
     return (
