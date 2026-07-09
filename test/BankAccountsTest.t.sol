@@ -138,7 +138,56 @@ contract BankAccountsTest is Test {
         
     }
 
+    //////// pauseUnpaause function ////////
+
+    function testPauseUnpauseRevertsNotOwnerOfAccount() external {
+        uint256 amount = 1 ether;
+        uint256 idOfAccount = 1;
+        _createSingleAccountAndDeposit(user1, amount);
+
+        vm.expectRevert(BankAccounts.BankAccounts__NotAnOwner.selector);
+        vm.prank(user2);
+        bankAccounts.pauseUnpauseAccount(idOfAccount);
+
+    }
+
+    function testPauseUnpauseFunction() external {
+        uint256 amount = 1 ether;
+        uint256 idOfAccount = 1;
+        _createSingleAccountAndDeposit(user1, amount);
+
+        vm.prank(user1);
+        bankAccounts.pauseUnpauseAccount(idOfAccount);
+
+        BankAccounts.Account memory account = bankAccounts.getAccount(idOfAccount);
+
+        assert(account.isActive == false);
+
+        vm.prank(user1);
+        bankAccounts.pauseUnpauseAccount(idOfAccount);
+
+        BankAccounts.Account memory accountSecondTime = bankAccounts.getAccount(idOfAccount);
+
+        assert(accountSecondTime.isActive == true);
+
+    }
+
+
     //////// Deposit function ////////
+
+    function testDepositRevertsAccountInactive() external {
+        uint256 amount = 1 ether;
+        uint256 idOfAccount = 1;
+        _createSingleAccountAndDeposit(user1, amount);
+
+        vm.startPrank(user1);
+        bankAccounts.pauseUnpauseAccount(idOfAccount);
+
+        vm.expectRevert(BankAccounts.BankAccounts__AccountInactive.selector);
+        bankAccounts.deposit{value: amount}(idOfAccount);
+
+        vm.stopPrank();
+    }
 
     function testDepositRevertsMsgValueIs0() external {
         uint256 amount = 0;
@@ -173,6 +222,21 @@ contract BankAccountsTest is Test {
     }
 
     //////// Request Withdrawal function ////////
+
+    function testWithdrawalRevertsAccountInactive() external {
+        uint256 amount = 1 ether;
+        uint256 amountToWithdraw = 1e9;
+        uint256 idOfAccount = 1;
+        _createSingleAccountAndDeposit(user1, amount);
+
+        vm.startPrank(user1);
+        bankAccounts.pauseUnpauseAccount(idOfAccount);
+
+        vm.expectRevert(BankAccounts.BankAccounts__AccountInactive.selector);
+        bankAccounts.requestWithdrawal(idOfAccount, amountToWithdraw);
+
+        vm.stopPrank();
+    }
 
     function testWithdrawalRequestRevertsAccountDoesNotExists() external {
         uint256 amount = 1e18;
@@ -274,7 +338,7 @@ contract BankAccountsTest is Test {
         vm.stopPrank();
     }
 
-    //////// Yield token function ////////
+    //////// Yield token function in whole single account operation ////////
 
     function testGettingYieldToken() external {
         YieldToken token = YieldToken(bankAccounts.getYeildTokenAddress());
@@ -295,6 +359,34 @@ contract BankAccountsTest is Test {
         assertNotEq(userTokensBefore, userTokensAfter);
         assert(userTokensAfter != 0);
 
+    }
+
+    //////// Whole Joint Operation ////////
+
+    function testWholeJointAccountOperation() external {
+        YieldToken token = YieldToken(bankAccounts.getYeildTokenAddress());
+        uint256 accountId = 1;
+        uint256 amount = 2 ether;
+        uint256 timeElapsed = block.timestamp + 30 days;
+
+        uint256 user1TokensBefore = token.balanceOf(user1);
+        uint256 user2TokensBefore = token.balanceOf(user2);
+        _createJointAccountAndDeposit(user1, user2, amount);
+        vm.warp(timeElapsed);
+
+        vm.prank(user1);
+        bankAccounts.requestWithdrawal(accountId, (amount/2));
+
+        vm.prank(user2);
+        bankAccounts.approveWithdrawal(accountId);
+
+        uint256 user1TokensAfter = token.balanceOf(user1);
+        uint256 user2TokensAfter = token.balanceOf(user2);
+
+        assertNotEq(user1TokensBefore, user1TokensAfter);
+        assertNotEq(user2TokensBefore, user2TokensAfter);
+        assert(user1TokensAfter != 0);
+        assert(user2TokensAfter != 0);
     }
 
     //////// Getter functions ////////

@@ -119,6 +119,20 @@ contract BankAccounts is Ownable {
         emit AccountCreated(currentId, _type, _owners);
     }
 
+    function pauseUnpauseAccount(uint256 _accountId) external {
+        Account storage account = s_accounts[_accountId];
+        bool ownerCalling;
+
+        for (uint256 i = 0; i < account.owners.length; i++) {
+            if (account.owners[i] == msg.sender) ownerCalling = true;
+        }
+
+        if (!ownerCalling) revert BankAccounts__NotAnOwner();
+
+        account.isActive = !account.isActive;
+
+    }
+
     /**
      * @dev Deposits Ether into a specific account
      */
@@ -127,7 +141,7 @@ contract BankAccounts is Ownable {
         
         Account storage account = s_accounts[_accountId];
         if (account.id == 0) revert BankAccounts__AccountDoesNotExist();
-        //if (!account.isActive) revert BankAccounts__AccountInactive(); // I cannot get to this error maybe owner can make an account inactive or a user
+        if (!account.isActive) revert BankAccounts__AccountInactive();
 
         _processYield(_accountId);
         account.balance += msg.value;
@@ -143,7 +157,7 @@ contract BankAccounts is Ownable {
         Account storage account = s_accounts[_accountId];
         
         if (account.id == 0) revert BankAccounts__AccountDoesNotExist();
-        // if (!account.isActive) revert BankAccounts__AccountInactive();
+        if (!account.isActive) revert BankAccounts__AccountInactive();
         if (account.balance < _amount) revert BankAccounts__InsufficientFunds();
 
         // Verify that the sender is one of the owners
