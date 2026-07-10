@@ -75,6 +75,7 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Allows the owner to update the yield token address if needed.
+     * @param _newYieldTokenAddress New yield token address
      */
     function setYieldToken(address _newYieldTokenAddress) external onlyOwner {
         s_yieldToken = IYieldToken(_newYieldTokenAddress);
@@ -84,6 +85,8 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Creates a new bank account (Individual or Joint)
+     * @param _type type of account
+     * @param _owners array of addresses for account
      */
     function createAccount(AccountType _type, address[] calldata _owners) external {
         if (_type == AccountType.Individual) {
@@ -119,6 +122,10 @@ contract BankAccounts is Ownable {
         emit AccountCreated(currentId, _type, _owners);
     }
 
+    /**
+     * @dev Pause or unpause account
+     * @param _accountId account ID
+     */
     function pauseUnpauseAccount(uint256 _accountId) external {
         Account storage account = s_accounts[_accountId];
         bool ownerCalling;
@@ -135,6 +142,7 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Deposits Ether into a specific account
+     * @param _accountId account ID
      */
     function deposit(uint256 _accountId) external payable {
         if (msg.value == 0) revert BankAccounts__ZeroDeposit();
@@ -151,7 +159,9 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Requests a withdrawal. If Individual, executes immediately. 
-     * If Joint, saves the request waiting for the co-owner's approval.
+     * @notice If Joint, saves the request waiting for the co-owner's approval.
+     * @param _accountId Account ID
+     * @param _amount amount to withdraw
      */
     function requestWithdrawal(uint256 _accountId, uint256 _amount) external {
         Account storage account = s_accounts[_accountId];
@@ -192,7 +202,7 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Approves and executes a pending withdrawal request for a Joint account.
-     * Must be called by the co-owner of the account who did NOT initiate the request.
+     * @notice Must be called by the co-owner of the account who did NOT initiate the request.
      * @param _accountId The ID of the joint account.
      */
     function approveWithdrawal(uint256 _accountId) external {
@@ -235,7 +245,8 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Calculates and mints yield based on balance and time elapsed.
-     * Updates the lastUpdateTime to the current block timestamp.
+     * @notice Updates the lastUpdateTime to the current block timestamp.
+     * @param _accountId Account ID
      */
     function _processYield(uint256 _accountId) internal {
         Account storage account = s_accounts[_accountId];
@@ -265,6 +276,7 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Returns the full details of a specific account.
+     * @param _accountId Account ID
      */
     function getAccount(uint256 _accountId) external view returns (Account memory) {
         return s_accounts[_accountId];
@@ -272,6 +284,7 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Returns an array of account IDs that a specific user belongs to.
+     * @param _user User address
      */
     function getUserAccounts(address _user) external view returns (uint256[] memory) {
         return s_userAccounts[_user];
@@ -279,15 +292,24 @@ contract BankAccounts is Ownable {
 
     /**
      * @dev Returns the pending or last withdrawal request for a specific account.
+     * @param _accountId Account ID
      */
     function getWithdrawalRequest(uint256 _accountId) external view returns (WithdrawalRequest memory) {
         return s_withdrawalRequests[_accountId];
     }
 
+    /**
+     * @dev Get Yield Token Address
+     * @return token Token Address
+     */
     function getYeildTokenAddress() external view returns (address token) {
         token = address(s_yieldToken);
     }
 
+    /**
+     * @dev Get contract balance
+     * @return balance
+     */
     function getContractBalance() external view returns (uint256 balance) {
         balance = address(this).balance;
     }

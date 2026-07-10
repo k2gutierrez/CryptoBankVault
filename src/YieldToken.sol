@@ -9,7 +9,7 @@ contract YieldToken is ERC20, Ownable {
 
     /**
      * @dev Function to mint reward tokens.
-     * Only the Bank contract (when assigned as owner) will be able to call it.
+     * @notice Only the Bank contract (when assigned as owner) will be able to call it.
      */
     function mint(address to, uint256 amount) external onlyOwner {
         _mint(to, amount);
